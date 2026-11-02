@@ -1475,13 +1475,24 @@ function buildTF() {
 /* ============================================================ NEWS VIEW ============================================================ */
 function buildDayTabs() {
   const el = document.getElementById('dayTabs');
-  const days = ['yesterday','today','tomorrow'];
-  el.innerHTML = days.map(d => `<div class="day-tab ${d===state.newsDay?'active':''}" data-day="${d}">${t('day_'+d)}</div>`).join('');
-  el.querySelectorAll('.day-tab').forEach(tb => tb.addEventListener('click', () => {
-    state.newsDay = tb.dataset.day;
-    el.querySelectorAll('.day-tab').forEach(x=>x.classList.remove('active')); tb.classList.add('active');
-    buildNewsList();
-  }));
+
+  el.innerHTML = `
+    <div class="day-tab active" data-section="upcoming">Upcoming Events</div>
+    <div class="day-tab" data-section="past">Past News</div>
+  `;
+
+  el.querySelectorAll('.day-tab').forEach(tb => {
+    tb.addEventListener('click', () => {
+      state.newsSection = tb.dataset.section;
+
+      el.querySelectorAll('.day-tab').forEach(x =>
+        x.classList.remove('active')
+      );
+
+      tb.classList.add('active');
+      buildNewsList();
+    });
+  });
 }
 function buildCurrChips() {
   const enabled = Object.keys(PAIRS).filter(k => settingsState.enabledPairs.has(k));
