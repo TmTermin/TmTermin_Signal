@@ -1942,8 +1942,8 @@ async function fetchLiveNews() {
       time: formatLiveTime(it.time, it.day), actual: it.actual, forecast: it.forecast,
       name: it.name, reason: it.reason, note: it.reason, direction: it.direction,
     }));
-    const tomorrowDemo = NEWS.filter(n => n.day === 'tomorrow');
-    NEWS.length = 0; NEWS.push(...mapped, ...tomorrowDemo);
+    NEWS.length = 0;
+    NEWS.push(...mapped);
     liveDataActive = true;
     document.getElementById('liveBadge').textContent = t('badge_live');
     buildCurrChips(); buildNewsList();
