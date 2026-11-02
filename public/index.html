@@ -1507,17 +1507,37 @@ function buildCurrChips() {
   }));
 }
 function buildNewsList() {
-  let items = NEWS.filter(n => n.day === state.newsDay);
-  if (state.newsCurrency !== 'ALL') items = items.filter(n => n.currency === state.newsCurrency);
+  const now = Date.now();
+
+let items = NEWS.filter(n => {
+  const eventTime = new Date(n.time).getTime();
+
+  if (state.newsSection === 'past') {
+    return eventTime < now;
+  }
+
+  return eventTime >= now;
+});
+
+if (state.newsCurrency !== 'ALL') {
+  items = items.filter(n => n.currency === state.newsCurrency);
+}
+
+items.sort((a, b) => {
+  const timeA = new Date(a.time).getTime();
+  const timeB = new Date(b.time).getTime();
+
+  return state.newsSection === 'past'
+    ? timeB - timeA
+    : timeA - timeB;
+});
   const el = document.getElementById('newsList');
   if (items.length === 0) { el.innerHTML = `<div class="card muted-small" style="text-align:center;padding:30px 10px;">${state.newsCurrency!=='ALL'?state.newsCurrency+' — ':''}${t('no_news')}</div>`; return; }
   const L = state.lang;
   const pick = (field) => typeof field === 'object' && field !== null ? (field[L] || field.en) : field;
   el.innerHTML = items.map(n => {
-   const isFuture = n.day === 'tomorrow';
-const dir = n.direction;
-const hasPrediction =
-  !!dir &&
+   const isFuture = new Date(n.time).getTime() > Date.now();
+const dir = n.direction;  !!dir &&
   n.confidence !== null &&
   n.confidence !== undefined;
     const name = pick(n.name);
