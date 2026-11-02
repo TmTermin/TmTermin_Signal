@@ -1503,7 +1503,12 @@ function buildNewsList() {
   const L = state.lang;
   const pick = (field) => typeof field === 'object' && field !== null ? (field[L] || field.en) : field;
   el.innerHTML = items.map(n => {
-    const isFuture = n.day === 'tomorrow'; const dir = isFuture ? n.predicted : n.direction;
+   const isFuture = n.day === 'tomorrow';
+const dir = n.direction;
+const hasPrediction =
+  !!dir &&
+  n.confidence !== null &&
+  n.confidence !== undefined;
     const name = pick(n.name);
     const reason = pick(n.reason);
     const note = pick(n.note);
@@ -1512,8 +1517,16 @@ function buildNewsList() {
         <div class="news-item-main"><div class="nm">${n.currency} · ${name}</div><div class="sub mono">${isFuture ? t('forecast_word')+' '+n.forecast : n.actual+' '+t('vs_word')+' '+n.forecast}</div></div>
         <div class="news-item-right"><div class="tm">${n.time}</div><span class="impact-tag impact-${n.impact}">${t('impact_'+n.impact)}</span></div>
       </div>
-      <div class="news-detail" id="detail-${n.id}"><div class="news-detail-inner"><div class="reason-text">${reason}</div>
-        <div class="news-pred ${dir}"><span class="arrow">${dir==='bull'?'↗':'↘'}</span><span>${isFuture ? t('pred_label') : note}</span>${isFuture ? `<span class="pct">${n.probability}%</span>` : ''}</div>
+     ${hasPrediction
+  ? `<div class="news-pred ${dir}">
+      <span class="arrow">${dir === 'bull' ? '↗' : '↘'}</span>
+      <span>${t('pred_label')}</span>
+      <span class="pct">${n.confidence}%</span>
+    </div>`
+  : `<div class="news-pred muted-small">
+      <span>⏳ Awaiting release</span>
+    </div>`
+}        <div class="news-pred ${dir}"><span class="arrow">${dir==='bull'?'↗':'↘'}</span><span>${isFuture ? t('pred_label') : note}</span>${isFuture ? `<span class="pct">${n.probability}%</span>` : ''}</div>
       </div></div></div>`;
   }).join('');
   el.querySelectorAll('.news-item').forEach(card => card.addEventListener('click', () => {
