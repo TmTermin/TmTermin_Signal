@@ -13,7 +13,7 @@
 // bot's forex quote in followup.js, which free Finnhub does support.
 
 const YAHOO_SYMBOL = {
-  XAUUSD: 'XAUUSD=X',
+  XAUUSD: 'XAU=X',
   EURUSD: 'EURUSD=X',
   GBPUSD: 'GBPUSD=X',
   AUDUSD: 'AUDUSD=X',
