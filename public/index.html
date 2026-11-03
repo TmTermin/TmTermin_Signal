@@ -1203,6 +1203,14 @@ function createChart(canvas, crossBox, fullCandles, decimals, levels, markers) {
 
   return { redraw: () => render() };
 }
+/* Chart instances are kept across tick updates (instead of calling
+   createChart fresh every ~2-8s) so: (1) no re-run of the "candles
+   growing in" reveal animation on every tick — only on first load,
+   (2) no duplicate pointer/wheel event listeners piling up on the
+   canvas, (3) the user's pan/zoom position survives a price tick. */
+let sigChartInstance = null, sigChartKey = null;
+let anaChartInstance = null, anaChartKey = null;
+
 function animateNumber(el, from, to, decimals, duration) {
   const start = performance.now();
   function step(t) {
@@ -1233,7 +1241,13 @@ function renderSignalsChart(isTick) {
   chgEl.textContent = (chg>=0?'+':'') + chg.toFixed(2) + '%';
   chgEl.className = 'price-chg mono ' + (chg>=0?'up':'down');
   const sigMarkers = SIGNAL_MARKERS[state.pair+'_'+state.tf];
-  createChart(document.getElementById('sigCanvas'), document.getElementById('sigCross'), candles, p.decimals, null, sigMarkers);
+  const chartKey = state.pair + '_' + state.tf;
+  if (isTick && sigChartInstance && sigChartKey === chartKey) {
+    sigChartInstance.redraw();
+  } else {
+    sigChartInstance = createChart(document.getElementById('sigCanvas'), document.getElementById('sigCross'), candles, p.decimals, null, sigMarkers);
+    sigChartKey = chartKey;
+  }
   if (!isTick) {
     document.getElementById('sigResult').classList.remove('show'); document.getElementById('sigResult').innerHTML='';
     document.getElementById('staleWarning').classList.remove('show'); lastSigRes = null;
@@ -1379,7 +1393,8 @@ function runAnalyze() {
     const candles = getCandles(state.pair, state.tf); const p = PAIRS[state.pair];
     const res = analyzeCandles(candles, state.strategy);
     lastSigRes = res;
-    createChart(document.getElementById('sigCanvas'), document.getElementById('sigCross'), candles, p.decimals, res, SIGNAL_MARKERS[state.pair+'_'+state.tf]);
+    sigChartInstance = createChart(document.getElementById('sigCanvas'), document.getElementById('sigCross'), candles, p.decimals, res, SIGNAL_MARKERS[state.pair+'_'+state.tf]);
+    sigChartKey = state.pair + '_' + state.tf;
     const panel = document.getElementById('sigResult');
     panel.innerHTML = buildResultHTML(res, p.decimals, 'sig');
     panel.classList.remove('show'); void panel.offsetWidth; panel.classList.add('show');
@@ -1577,7 +1592,8 @@ function renderAnalysisChart() {
   chgEl.className = 'price-chg mono ' + (chg>=0?'up':'down');
   const res = state.quickVerdicts[state.strategy] || analyzeCandles(candles, state.strategy);
   lastAnaRes = res;
-  createChart(document.getElementById('anaCanvas'), document.getElementById('anaCross'), candles, p.decimals, res, SIGNAL_MARKERS[state.pair+'_'+state.tf]);
+  anaChartInstance = createChart(document.getElementById('anaCanvas'), document.getElementById('anaCross'), candles, p.decimals, res, SIGNAL_MARKERS[state.pair+'_'+state.tf]);
+  anaChartKey = state.pair + '_' + state.tf;
   const strat = STRATEGIES.find(s=>s.id===state.strategy);
   const panel = document.getElementById('anaResult');
   panel.innerHTML = `<div class="muted-small" style="margin-bottom:10px;">${t(strat.descKey)}</div>` + buildResultHTML(res, p.decimals, 'ana');
@@ -1829,7 +1845,13 @@ function tickLive() {
     pulseEl(document.getElementById('consensusBanner'));
     const chartCanvas = document.getElementById('anaCanvas');
     const res = state.quickVerdicts[state.strategy];
-    createChart(chartCanvas, document.getElementById('anaCross'), candles, p.decimals, res, SIGNAL_MARKERS[state.pair+'_'+state.tf]);
+    const tickKey = state.pair + '_' + state.tf;
+    if (anaChartInstance && anaChartKey === tickKey) {
+      anaChartInstance.redraw();
+    } else {
+      anaChartInstance = createChart(chartCanvas, document.getElementById('anaCross'), candles, p.decimals, res, SIGNAL_MARKERS[state.pair+'_'+state.tf]);
+      anaChartKey = tickKey;
+    }
   }
 }
 setInterval(tickLive, 2600);
@@ -1874,7 +1896,13 @@ async function pollPriceTick() {
       pulseEl(document.getElementById('consensusBanner'));
       const chartCanvas = document.getElementById('anaCanvas');
       const verdict = state.quickVerdicts[state.strategy];
-      createChart(chartCanvas, document.getElementById('anaCross'), candles, p.decimals, verdict, SIGNAL_MARKERS[state.pair + '_' + state.tf]);
+      const tickKey2 = state.pair + '_' + state.tf;
+      if (anaChartInstance && anaChartKey === tickKey2) {
+        anaChartInstance.redraw();
+      } else {
+        anaChartInstance = createChart(chartCanvas, document.getElementById('anaCross'), candles, p.decimals, verdict, SIGNAL_MARKERS[state.pair + '_' + state.tf]);
+        anaChartKey = tickKey2;
+      }
     }
   } catch (err) { /* ignore — try again on the next tick */ }
 }
