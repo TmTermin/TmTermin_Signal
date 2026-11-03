@@ -1,17 +1,15 @@
 // api/price.js
 //
-// A very lightweight companion to api/candles.js: returns just the
-// current price for a pair, nothing else. The Mini App polls this far
-// more often (every few seconds) than it re-fetches the full 90-candle
-// history (every 60s via api/candles.js), so the on-screen price ticks
-// the way MT5's does, without burning the daily request budget on full
-// candle re-fetches.
+// Lightweight companion to api/candles.js: returns just the current
+// price for a pair. Also uses lib/twelvedata.js's automatic key
+// failover (TWELVEDATA_API_KEY -> TWELVEDATA_API_KEY_2).
 //
-// Budget note: Twelve Data's free tier is 800 requests/day, 8/min.
-// This project polls /api/price roughly every 8 seconds while a chart
-// is actually open — fine for personal/occasional use, but if this
-// Mini App ever gets heavy concurrent traffic, raise the poll interval
-// in the frontend (search for `pollPriceTick`) or upgrade the plan.
+// Budget note: Twelve Data's free tier is 800 requests/day per key
+// (so up to 1,600/day total with two keys), 8/min per key. The Mini
+// App polls this roughly every 8s while a chart is open and the tab
+// is visible — see `pollPriceTick` in the frontend.
+
+import { fetchTwelveData } from '../lib/twelvedata.js';
 
 const TD_SYMBOL = {
   XAUUSD: 'XAU/USD',
@@ -27,19 +25,17 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 's-maxage=3, stale-while-revalidate=5');
 
-  const apiKey = process.env.TWELVEDATA_API_KEY;
-  if (!apiKey) { res.status(500).json({ error: 'Server not configured: missing TWELVEDATA_API_KEY' }); return; }
-
   const pair = String(req.query.pair || '').toUpperCase();
   const symbol = TD_SYMBOL[pair];
   if (!symbol) { res.status(400).json({ error: 'Unknown pair' }); return; }
 
   try {
-    const url = `https://api.twelvedata.com/price?symbol=${encodeURIComponent(symbol)}&apikey=${apiKey}`;
-    const td = await fetch(url);
-    if (!td.ok) { res.status(502).json({ error: 'Twelve Data request failed', status: td.status }); return; }
-    const data = await td.json();
+    const { ok, status, data } = await fetchTwelveData('price', { symbol });
 
+    if (!ok) {
+      res.status(status === 429 ? 429 : 502).json({ error: 'Twelve Data request failed', status, message: data?.message });
+      return;
+    }
     if (data.status === 'error' || data.price == null) {
       res.status(502).json({ error: 'Twelve Data error', message: data.message || 'no price' });
       return;
