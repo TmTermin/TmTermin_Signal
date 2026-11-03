@@ -1906,7 +1906,12 @@ async function pollPriceTick() {
     }
   } catch (err) { /* ignore — try again on the next tick */ }
 }
-setInterval(pollPriceTick, 8000);
+// Twelve Data's free tier caps out at 800 requests/day. Polling every
+// 8s alone could burn through that in under 2 hours, which is exactly
+// what silently knocked this back to "Demo data" earlier. 25s keeps
+// daily usage sustainable for normal personal use, and pausing while
+// the tab isn't visible cuts real-world consumption further.
+setInterval(() => { if (!document.hidden) pollPriceTick(); }, 8000);
 
 function checkStaleness() {
   const el = document.getElementById('staleWarning');
@@ -2050,8 +2055,8 @@ candleCountdownTick();
 initTelegram();
 loadFromCloud();
 fetchLiveNews();
-setInterval(fetchLiveNews, 90000);
-setInterval(() => fetchRealCandles(state.pair, state.tf), 60000);
+setInterval(() => { if (!document.hidden) fetchLiveNews(); }, 90000);
+setInterval(() => { if (!document.hidden) fetchRealCandles(state.pair, state.tf); }, 300000); // every 5 min
 </script>
 </body>
 </html>
