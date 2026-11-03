@@ -1475,24 +1475,13 @@ function buildTF() {
 /* ============================================================ NEWS VIEW ============================================================ */
 function buildDayTabs() {
   const el = document.getElementById('dayTabs');
-
-  el.innerHTML = `
-    <div class="day-tab active" data-section="upcoming">Upcoming Events</div>
-    <div class="day-tab" data-section="past">Past News</div>
-  `;
-
-  el.querySelectorAll('.day-tab').forEach(tb => {
-    tb.addEventListener('click', () => {
-      state.newsSection = tb.dataset.section;
-
-      el.querySelectorAll('.day-tab').forEach(x =>
-        x.classList.remove('active')
-      );
-
-      tb.classList.add('active');
-      buildNewsList();
-    });
-  });
+  const days = ['yesterday','today','tomorrow'];
+  el.innerHTML = days.map(d => `<div class="day-tab ${d===state.newsDay?'active':''}" data-day="${d}">${t('day_'+d)}</div>`).join('');
+  el.querySelectorAll('.day-tab').forEach(tb => tb.addEventListener('click', () => {
+    state.newsDay = tb.dataset.day;
+    el.querySelectorAll('.day-tab').forEach(x=>x.classList.remove('active')); tb.classList.add('active');
+    buildNewsList();
+  }));
 }
 function buildCurrChips() {
   const enabled = Object.keys(PAIRS).filter(k => settingsState.enabledPairs.has(k));
@@ -1507,39 +1496,14 @@ function buildCurrChips() {
   }));
 }
 function buildNewsList() {
-  const now = Date.now();
-
-let items = NEWS.filter(n => {
-  const eventTime = new Date(n.time).getTime();
-
-  if (state.newsSection === 'past') {
-    return eventTime < now;
-  }
-
-  return eventTime >= now;
-});
-
-if (state.newsCurrency !== 'ALL') {
-  items = items.filter(n => n.currency === state.newsCurrency);
-}
-
-items.sort((a, b) => {
-  const timeA = new Date(a.time).getTime();
-  const timeB = new Date(b.time).getTime();
-
-  return state.newsSection === 'past'
-    ? timeB - timeA
-    : timeA - timeB;
-});
+  let items = NEWS.filter(n => n.day === state.newsDay);
+  if (state.newsCurrency !== 'ALL') items = items.filter(n => n.currency === state.newsCurrency);
   const el = document.getElementById('newsList');
   if (items.length === 0) { el.innerHTML = `<div class="card muted-small" style="text-align:center;padding:30px 10px;">${state.newsCurrency!=='ALL'?state.newsCurrency+' — ':''}${t('no_news')}</div>`; return; }
   const L = state.lang;
   const pick = (field) => typeof field === 'object' && field !== null ? (field[L] || field.en) : field;
   el.innerHTML = items.map(n => {
-   const isFuture = new Date(n.time).getTime() > Date.now();
-const dir = n.direction;  !!dir &&
-  n.confidence !== null &&
-  n.confidence !== undefined;
+    const isFuture = n.day === 'tomorrow'; const dir = isFuture ? n.predicted : n.direction;
     const name = pick(n.name);
     const reason = pick(n.reason);
     const note = pick(n.note);
@@ -1548,16 +1512,8 @@ const dir = n.direction;  !!dir &&
         <div class="news-item-main"><div class="nm">${n.currency} · ${name}</div><div class="sub mono">${isFuture ? t('forecast_word')+' '+n.forecast : n.actual+' '+t('vs_word')+' '+n.forecast}</div></div>
         <div class="news-item-right"><div class="tm">${n.time}</div><span class="impact-tag impact-${n.impact}">${t('impact_'+n.impact)}</span></div>
       </div>
-     ${hasPrediction
-  ? `<div class="news-pred ${dir}">
-      <span class="arrow">${dir === 'bull' ? '↗' : '↘'}</span>
-      <span>${t('pred_label')}</span>
-      <span class="pct">${n.confidence}%</span>
-    </div>`
-  : `<div class="news-pred muted-small">
-      <span>⏳ Awaiting release</span>
-    </div>`
-}        <div class="news-pred ${dir}"><span class="arrow">${dir==='bull'?'↗':'↘'}</span><span>${isFuture ? t('pred_label') : note}</span>${isFuture ? `<span class="pct">${n.probability}%</span>` : ''}</div>
+      <div class="news-detail" id="detail-${n.id}"><div class="news-detail-inner"><div class="reason-text">${reason}</div>
+        <div class="news-pred ${dir}"><span class="arrow">${dir==='bull'?'↗':'↘'}</span><span>${isFuture ? t('pred_label') : note}</span>${isFuture ? `<span class="pct">${n.probability}%</span>` : ''}</div>
       </div></div></div>`;
   }).join('');
   el.querySelectorAll('.news-item').forEach(card => card.addEventListener('click', () => {
@@ -1878,6 +1834,52 @@ function tickLive() {
 }
 setInterval(tickLive, 2600);
 
+/* ---- Fast price tick for LIVE data (api/price.js) -------------------
+   The full 90-candle history only refreshes every 60s (fetchRealCandles).
+   This polls a much lighter endpoint far more often so the on-screen
+   price moves the way MT5's does, without re-fetching all 90 bars. */
+async function pollPriceTick() {
+  const key = state.pair + '_' + state.tf;
+  if (!liveCandleKeys.has(key)) return; // demo data already ticks via tickLive's jitter
+  try {
+    const res = await fetch(`/api/price?pair=${state.pair}`, { cache: 'no-store' });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (typeof data.price !== 'number' || isNaN(data.price)) return;
+
+    const candles = getCandles(state.pair, state.tf);
+    const last = candles[candles.length - 1];
+    last.close = data.price;
+    last.high = Math.max(last.high, data.price);
+    last.low = Math.min(last.low, data.price);
+    delete candles._ind;
+    candles._ema20 = ema(candles, 20);
+
+    if (document.getElementById('view-signals').classList.contains('active')) renderSignalsChart(true);
+
+    if (document.getElementById('view-analysis').classList.contains('active')) {
+      const p = PAIRS[state.pair];
+      const newLast = candles[candles.length - 1].close;
+      const priceEl = document.getElementById('anaPrice');
+      if (lastAnaPrice !== null) {
+        animateNumber(priceEl, lastAnaPrice, newLast, p.decimals, 400);
+        priceEl.classList.remove('flash-up', 'flash-down'); void priceEl.offsetWidth;
+        priceEl.classList.add(newLast >= lastAnaPrice ? 'flash-up' : 'flash-down');
+        setTimeout(() => priceEl.classList.remove('flash-up', 'flash-down'), 700);
+      }
+      lastAnaPrice = newLast;
+      renderPatternCard(candles);
+      computeStrategyGrid();
+      document.querySelectorAll('.strat-card .sc-verdict').forEach(pulseEl);
+      pulseEl(document.getElementById('consensusBanner'));
+      const chartCanvas = document.getElementById('anaCanvas');
+      const verdict = state.quickVerdicts[state.strategy];
+      createChart(chartCanvas, document.getElementById('anaCross'), candles, p.decimals, verdict, SIGNAL_MARKERS[state.pair + '_' + state.tf]);
+    }
+  } catch (err) { /* ignore — try again on the next tick */ }
+}
+setInterval(pollPriceTick, 8000);
+
 function checkStaleness() {
   const el = document.getElementById('staleWarning');
   if (!lastSigRes || !lastSigRes.analyzedAt) { el.classList.remove('show'); return; }
@@ -1986,8 +1988,8 @@ async function fetchLiveNews() {
       time: formatLiveTime(it.time, it.day), actual: it.actual, forecast: it.forecast,
       name: it.name, reason: it.reason, note: it.reason, direction: it.direction,
     }));
-    NEWS.length = 0;
-    NEWS.push(...mapped);
+    const tomorrowDemo = NEWS.filter(n => n.day === 'tomorrow');
+    NEWS.length = 0; NEWS.push(...mapped, ...tomorrowDemo);
     liveDataActive = true;
     document.getElementById('liveBadge').textContent = t('badge_live');
     buildCurrChips(); buildNewsList();
