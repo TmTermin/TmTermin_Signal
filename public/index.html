@@ -1320,9 +1320,29 @@ function analyzeCandles(candles, strategyId) {
     else { confidence = Math.max(35, confidence - 10); mtfStatus = { agree: false, tf: mtf.tf }; }
   }
 
-  const entry = last; const slDist = last * 0.004;
+  // Scalping timeframes (1m-30m) get realistic, TF-scaled pip targets
+  // instead of the same huge target every timeframe would otherwise
+  // share — a 300-pip target makes no sense on a 1-minute chart. Swing
+  // timeframes (1H+) keep the original flat-% sizing, which is already
+  // reasonably large for those.
+  const TF_PIP_RANGE = { '1m': [30, 60], '5m': [40, 80], '15m': [60, 120], '30m': [80, 160] };
+  const entry = last;
+  let slDist, tpDist;
+  const pipRange = TF_PIP_RANGE[state.tf];
+  if (pipRange) {
+    const pipMult = PAIRS[state.pair].pipMult;
+    // Higher-confidence signals aim toward the top of the range, weaker
+    // ones stay conservative near the bottom — not just a flat number.
+    const frac = Math.max(0, Math.min(1, (confidence - 52) / (95 - 52)));
+    const targetPips = pipRange[0] + frac * (pipRange[1] - pipRange[0]);
+    tpDist = targetPips / pipMult;
+    slDist = tpDist / 2; // keep the usual 1:2 reward:risk
+  } else {
+    slDist = last * 0.004;
+    tpDist = slDist * 2;
+  }
   const sl = bullish ? entry - slDist : entry + slDist;
-  const tp = bullish ? entry + slDist*2 : entry - slDist*2;
+  const tp = bullish ? entry + tpDist : entry - tpDist;
   return { bullish, confidence, entry, sl, tp, reasonKey, extra, mtfStatus, analyzedAt: Date.now() };
 }
 function buildResultHTML(res, decimals, idPrefix) {
